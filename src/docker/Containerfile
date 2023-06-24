@@ -1,0 +1,36 @@
+ARG fivem_version=latest
+# anything other than a valid version will default to latest
+
+# i like debian for ease of use, could use anything
+FROM debian:10-slim as download
+ARG fivem_version
+
+RUN apt update -y \
+  && apt install -y tar xz-utils curl git file jq
+
+# downloading and extracting the artifact
+RUN cd /tmp \
+&& curl -sSL "https://runtime.fivem.net/artifacts/fivem/build_proot_linux/master/$( \
+  curl -sSL https://runtime.fivem.net/artifacts/fivem/build_proot_linux/master/ \
+    | grep -Eo '".*/*.tar.xz"' \
+    | sed 's$.*\./\([[:alnum:]_-]*/fx\.tar\.xz\).*$\1$g' \
+    | grep "$fivem_version" \
+  || curl -sSL https://changelogs-live.fivem.net/api/changelog/versions/linux/server/ \
+    | jq -r '.latest_download' \
+    | sed 's$.*master/\([[:alnum:]_-]*/fx\.tar\.xz\).*$\1$g' \
+  )" -o fx.tar.xz \
+&& tar xvf fx.tar.xz >> /dev/null
+
+FROM scratch
+VOLUME [ "/home/container" ]
+
+COPY --from=download /tmp/alpine /
+
+# we need this to be able to use the image with pterodactyl
+RUN adduser -D -h /home/container container
+USER container
+ENV  USER=container HOME=/home/container
+WORKDIR /home/container
+
+COPY ./entrypoint.sh /entrypoint.sh
+CMD ["/bin/ash", "/entrypoint.sh"]
